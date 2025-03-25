@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Kanban To-Do List</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Top input container with export/import and clear all buttons -->
+    <div class="input-container">
+        <input type="text" id="new-task" placeholder="Type a new task and press Enter...">
+        <button id="download-btn">Download Tasks</button>
+        <button id="upload-btn" class="upload">Upload Tasks</button>
+        <button id="clear-all-btn" class="clear">Clear All</button>
+        <!-- Hidden file input for uploading tasks file -->
+        <input type="file" id="file-input" accept=".json" style="display:none;">
+    </div>
+    
+    <div class="board">
+        <div class="column" id="todo">
+            <h2>To Do</h2>
+        </div>
+        <div class="column" id="doing">
+            <h2>Currently Doing</h2>
+        </div>
+        <div class="column" id="done">
+            <h2>Done</h2>
+        </div>
+    </div>
+
+    <script>
+        const columns = document.querySelectorAll('.column');
+
+        // Load saved tasks from localStorage (only tasks, not headers) on page load
+        columns.forEach(column => {
+            const savedTasks = localStorage.getItem(column.id);
+            if (savedTasks) {
+                column.innerHTML += savedTasks;
+            }
+            setupTasks(column);
+        });
+
+        // Add new task from top input field
+        document.getElementById('new-task').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && this.value.trim() !== '') {
+                const task = createTask(this.value);
+                document.getElementById('todo').appendChild(task);
+                this.value = '';
+                saveProgress();
+            }
+        });
+
+        // Download tasks as a file
+        document.getElementById('download-btn').addEventListener('click', function() {
+            const data = {};
+            columns.forEach(column => {
+                data[column.id] = localStorage.getItem(column.id) || '';
+            });
+            const json = JSON.stringify(data, null, 2);
+            const blob = new Blob([json], { type: "application/json" });
+            const url  = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = "tasks.json";
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+
+        // Trigger file input when upload button is clicked
+        document.getElementById('upload-btn').addEventListener('click', function() {
+            document.getElementById('file-input').click();
+        });
+
+        // Load tasks from uploaded file
+        document.getElementById('file-input').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                try {
+                    const data = JSON.parse(event.target.result);
+                    columns.forEach(column => {
+                        const header = column.querySelector('h2').outerHTML;
+                        const tasks = data[column.id] || '';
+                        column.innerHTML = header + tasks;
+                        localStorage.setItem(column.id, tasks);
+                        setupTasks(column);
+                    });
+                    alert('Tasks loaded successfully!');
+                } catch (error) {
+                    alert('Error loading tasks file.');
+                }
+            };
+            reader.readAsText(file);
+        });
+
+        // Clear all tasks by clearing localStorage and resetting columns
+        document.getElementById('clear-all-btn').addEventListener('click', function() {
+            if (confirm('Are you sure you want to clear all tasks?')) {
+                columns.forEach(column => {
+                    const header = column.querySelector('h2').outerHTML;
+                    column.innerHTML = header;
+                    localStorage.removeItem(column.id);
+                });
+            }
+        });
+
+        // Create task element
+        function createTask(content) {
+            const task = document.createElement('div');
+            task.className = 'task';
+            task.draggable = true;
+            task.addEventListener('dragstart', dragStart);
+
+            const taskText = document.createElement('div');
+            taskText.className = 'task-text';
+            taskText.textContent = content;
+            task.appendChild(taskText);
+
+            const buttonsContainer = document.createElement('div');
+            buttonsContainer.className = 'task-buttons';
+
+            const editButton = document.createElement('button');
+            editButton.textContent = 'Edit';
+            editButton.className = 'edit';
+            editButton.addEventListener('click', () => editTask(taskText));
+            buttonsContainer.appendChild(editButton);
+
+            const deleteButton = document.createElement('button');
+            deleteButton.textContent = 'Delete';
+            deleteButton.className = 'delete';
+            deleteButton.addEventListener('click', () => {
+                task.remove();
+                saveProgress();
+            });
+            buttonsContainer.appendChild(deleteButton);
+
+            task.appendChild(buttonsContainer);
+            return task;
+        }
+
+        // Edit task content
+        function editTask(taskText) {
+            const newText = prompt('Edit your task:', taskText.textContent);
+            if (newText !== null && newText.trim() !== '') {
+                taskText.textContent = newText.trim();
+                saveProgress();
+            }
+        }
+
+        // Setup tasks after loading or creating
+        function setupTasks(column) {
+            const tasks = column.querySelectorAll('.task');
+            tasks.forEach(task => {
+                task.draggable = true;
+                task.addEventListener('dragstart', dragStart);
+                const taskText = task.querySelector('.task-text');
+                const editButton = task.querySelector('button.edit');
+                const deleteButton = task.querySelector('button.delete');
+                if (editButton) {
+                    editButton.replaceWith(editButton.cloneNode(true));
+                    const newEditButton = task.querySelector('button.edit');
+                    newEditButton.addEventListener('click', () => editTask(taskText));
+                }
+                if (deleteButton) {
+                    deleteButton.replaceWith(deleteButton.cloneNode(true));
+                    const newDeleteButton = task.querySelector('button.delete');
+                    newDeleteButton.addEventListener('click', () => {
+                        task.remove();
+                        saveProgress();
+                    });
+                }
+            });
+        }
+
+        // Drag & drop functionality
+        let draggedTask = null;
+        function dragStart(event) {
+            draggedTask = event.target;
+        }
+        columns.forEach(column => {
+            column.addEventListener('dragover', event => event.preventDefault());
+            column.addEventListener('drop', event => {
+                if (draggedTask) {
+                    column.appendChild(draggedTask);
+                    saveProgress();
+                }
+            });
+        });
+
+        // Save progress (only tasks, not headers) to localStorage
+        function saveProgress() {
+            columns.forEach(column => {
+                const tasks = [...column.querySelectorAll('.task')].map(task => task.outerHTML).join('');
+                localStorage.setItem(column.id, tasks);
+            });
+        }
+    </script>
+</body>
+</html>
